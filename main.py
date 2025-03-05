@@ -1,6 +1,15 @@
+# Organizzatore di Screenshot per Domande di Certificazione
+# Questo script Python:
+# 1. Legge links da un file Excel
+# 2. Crea la struttura di cartelle richiesta
+# 3. Cattura screenshot dell'elemento specificato con XPath
+# 4. Salva gli screenshot con la numerazione corretta
+
 import os
+import json
 import time
-import argparse
+import re
+import shutil
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -8,130 +17,189 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 
-
-def setup_driver():
-    """Configura e restituisce un driver Chrome con le opzioni appropriate."""
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Esegui in background
-    chrome_options.add_argument("--window-size=1920,1080")  # Dimensione finestra
-    chrome_options.add_argument("--disable-notifications")  # Disabilita notifiche
-    chrome_options.add_argument("--disable-infobars")  # Disabilita barre informative
-    chrome_options.add_argument("--disable-extensions")  # Disabilita estensioni
-
-    # Inizializza il driver
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    return driver
-
-
-def capture_element_screenshot(driver, url, selector, output_path, wait_time=10):
-    """
-    Cattura uno screenshot di un elemento specifico della pagina.
-    
-    Args:
-        driver: WebDriver di Selenium
-        url: URL della pagina da cui catturare lo screenshot
-        selector: Selettore CSS dell'elemento da catturare
-        output_path: Percorso in cui salvare lo screenshot
-        wait_time: Tempo massimo di attesa per il caricamento dell'elemento
-    
-    Returns:
-        bool: True se lo screenshot è stato catturato con successo, False altrimenti
-    """
-    try:
-        # Carica la pagina
-        driver.get(url)
-        
-        # Attendi che l'elemento sia visibile
-        element = WebDriverWait(driver, wait_time).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, selector))
-        )
-        
-        # Scorri fino all'elemento
-        driver.execute_script("arguments[0].scrollIntoView(true);", element)
-        
-        # Aggiungi un po' di margine sopra l'elemento per non avere lo screenshot troppo attaccato al bordo
-        driver.execute_script("window.scrollBy(0, -50);")
-        
-        # Piccola pausa per assicurarsi che eventuali animazioni siano terminate
-        time.sleep(1)
-        
-        # Cattura lo screenshot dell'elemento
-        element.screenshot(output_path)
-        
-        return True
-    
-    except TimeoutException:
-        print(f"Timeout waiting for element on page: {url}")
-        return False
-    
-    except Exception as e:
-        print(f"Error capturing screenshot from {url}: {str(e)}")
-        return False
-
-
-def process_links(links_file, output_dir, selector, topic, start_number=1):
-    """
-    Processa una lista di link e cattura screenshot per ciascuno.
-    
-    Args:
-        links_file: File con la lista di URL (uno per riga)
-        output_dir: Directory in cui salvare gli screenshot
-        selector: Selettore CSS dell'elemento da catturare
-        topic: Numero del topic per organizzare le immagini
-        start_number: Numero da cui iniziare la numerazione degli screenshot
-    """
-    # Assicurati che la directory di output esista
-    topic_dir = os.path.join(output_dir, f"Topic{topic}")
-    os.makedirs(topic_dir, exist_ok=True)
-    
-    # Leggi i link
-    if links_file.endswith('.xlsx'):
-        # Se è un file Excel, assumiamo che ci sia una colonna 'Link'
-        df = pd.read_excel(links_file)
-        links = df['Link'].dropna().tolist()
-    else:
-        # Altrimenti leggi un semplice file di testo con un URL per riga
-        with open(links_file, 'r') as f:
-            links = [line.strip() for line in f if line.strip()]
-    
-    # Inizializza il driver
-    driver = setup_driver()
-    
-    try:
-        # Processa ogni link
-        for i, url in enumerate(links, start=start_number):
-            print(f"Processing {i}/{len(links)+start_number-1}: {url}")
-            
-            output_path = os.path.join(topic_dir, f"{i}.png")
-            success = capture_element_screenshot(driver, url, selector, output_path)
-            
-            if success:
-                print(f"  Screenshot saved to {output_path}")
-            else:
-                print(f"  Failed to capture screenshot")
-    
-    finally:
-        # Chiudi il driver
-        driver.quit()
-
+# Configurazione
+config = {
+    "excel_file": r"C:\Users\mari.bianchi\OneDrive - Reply\Documenti\Tool_Certificazioni\Tool_Certificazioni_streamlit\data\DP-700\database.xlsx",  # Percorso del file Excel (su Windows raw string)
+    "base_dir": r"C:\Users\mari.bianchi\Downloads\test_data",             # Cartella base in cui organizzare tutto
+    "delay_between_screenshots": 2,  # Secondi di attesa tra screenshot
+    "viewport_width": 1200,
+    "viewport_height": 800,
+}
 
 def main():
-    # Definisci i parametri da riga di comando
-    parser = argparse.ArgumentParser(description='Capture screenshots of elements from a list of URLs')
-    parser.add_argument('links_file', help='File with list of URLs')
-    parser.add_argument('output_dir', help='Directory to save screenshots')
-    parser.add_argument('--selector', default='.question-body', help='CSS selector for the element to capture')
-    parser.add_argument('--topic', type=int, default=1, help='Topic number for organizing images')
-    parser.add_argument('--start', type=int, default=1, help='Starting number for screenshots')
-    
-    args = parser.parse_args()
-    
-    process_links(args.links_file, args.output_dir, args.selector, args.topic, args.start)
+    try:
+        # 1. Leggi i dati dal file Excel
+        print(f"Leggendo il file {config['excel_file']}...")
+        data = read_excel_file(config['excel_file'])
+        
+        # 2. Estrai informazioni sul corso e crea la struttura di cartelle
+        course_structure = organize_data_by_course(data)
+        create_folder_structure(course_structure)
+        
+        # 3. Cattura gli screenshot per ogni link
+        capture_screenshots(course_structure)
+        
+        print('Operazione completata con successo!')
+        
+    except Exception as e:
+        print(f'Si è verificato un errore: {e}')
 
+def read_excel_file(file_path):
+    """Legge il file Excel e restituisce i dati come DataFrame"""
+    return pd.read_excel(file_path)
+
+def organize_data_by_course(data):
+    """Organizza i dati per corso/certificazione"""
+    course_structure = {}
+    
+    for _, row in data.iterrows():
+        if pd.isna(row.get('Link')):
+            continue
+        
+        link = row['Link']
+        
+        # Estrai il nome del corso (DP-700) dal link
+        course_match = re.search(r'exam-([\w-]+)-topic', link)
+        course_name = course_match.group(1).upper() if course_match else 'UNKNOWN'
+        
+        # Estrai il numero del topic dal link o dalla riga
+        topic_number = row.get('Topic') if pd.notna(row.get('Topic')) else extract_topic_from_link(link)
+        topic_name = f"Topic{topic_number}"
+        
+        # Assicurati che le strutture esistano
+        if course_name not in course_structure:
+            course_structure[course_name] = {
+                'topics': {},
+                'excel_data': []
+            }
+        
+        if topic_name not in course_structure[course_name]['topics']:
+            course_structure[course_name]['topics'][topic_name] = []
+        
+        # Aggiungi l'informazione della domanda al topic
+        course_structure[course_name]['topics'][topic_name].append({
+            'numero': int(row['Numero']),
+            'link': link
+        })
+        
+        # Archivia anche i dati Excel completi per eventuali usi futuri
+        course_structure[course_name]['excel_data'].append(row.to_dict())
+    
+    return course_structure
+
+def extract_topic_from_link(link):
+    """Estrae il numero del topic dal link"""
+    match = re.search(r'topic-(\d+)-question', link)
+    return int(match.group(1)) if match else 0
+
+def create_folder_structure(course_structure):
+    """Crea la struttura di cartelle"""
+    print('Creazione della struttura di cartelle...')
+    
+    # Crea la directory base se non esiste
+    os.makedirs(config['base_dir'], exist_ok=True)
+    
+    # Per ogni corso
+    for course_name, course_data in course_structure.items():
+        course_path = os.path.join(config['base_dir'], course_name)
+        domande_path = os.path.join(course_path, 'Domande')
+        
+        # Crea la cartella del corso se non esiste
+        os.makedirs(course_path, exist_ok=True)
+        
+        # Copia il file Excel nella cartella del corso
+        shutil.copy2(config['excel_file'], os.path.join(course_path, 'database.xlsx'))
+        
+        # Crea un config.json facoltativo
+        config_data = {
+            "courseId": course_name,
+            "totalTopics": len(course_data['topics']),
+            "totalQuestions": len(course_data['excel_data']),
+            "lastUpdated": pd.Timestamp.now().isoformat()
+        }
+        
+        with open(os.path.join(course_path, 'config.json'), 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, indent=2)
+        
+        # Crea la cartella Domande
+        os.makedirs(domande_path, exist_ok=True)
+        
+        # Crea cartelle per ogni Topic
+        for topic_name in course_data['topics']:
+            topic_path = os.path.join(domande_path, topic_name)
+            os.makedirs(topic_path, exist_ok=True)
+    
+    print('Struttura di cartelle creata con successo!')
+
+def capture_screenshots(course_structure):
+    """Cattura gli screenshot"""
+    print('Avvio della cattura degli screenshot...')
+    
+    # Configura Chrome
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument(f"--window-size={config['viewport_width']},{config['viewport_height']}")
+    
+    # Inizializza il browser
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    
+    try:
+        # Per ogni corso
+        for course_name, course_data in course_structure.items():
+            print(f"Elaborazione del corso: {course_name}")
+            
+            # Per ogni topic
+            for topic_name, questions in course_data['topics'].items():
+                print(f"Elaborazione di {course_name} - {topic_name}")
+                
+                # Per ogni domanda nel topic
+                for question in questions:
+                    numero = question['numero']
+                    link = question['link']
+                    screenshot_path = os.path.join(
+                        config['base_dir'],
+                        course_name,
+                        'Domande',
+                        topic_name,
+                        f"{numero}.png"
+                    )
+                    
+                    # Controlla se lo screenshot esiste già
+                    if os.path.exists(screenshot_path):
+                        print(f"Screenshot per {course_name} {topic_name} Domanda {numero} già esistente.")
+                        continue
+                    
+                    print(f"Cattura screenshot per {course_name} {topic_name} Domanda {numero}...")
+                    
+                    try:
+                        # Vai all'URL
+                        driver.get(link)
+                        
+                        # Attendi che l'elemento con la classe specificata sia visibile
+                        wait = WebDriverWait(driver, 30)
+                        element = wait.until(EC.visibility_of_element_located(
+                            (By.XPATH, '//*[contains(concat( " ", @class, " " ), concat( " ", "discussion-header-container", " " ))]')
+                        ))
+                        
+                        # Cattura lo screenshot dell'elemento
+                        element.screenshot(screenshot_path)
+                        print(f"Screenshot salvato in: {screenshot_path}")
+                        
+                    except Exception as e:
+                        print(f"Errore durante la cattura dello screenshot per {course_name} {topic_name} Domanda {numero}: {e}")
+                    
+                    # Attendi un po' per evitare richieste troppo frequenti
+                    time.sleep(config['delay_between_screenshots'])
+    
+    finally:
+        # Chiudi il browser
+        driver.quit()
+    
+    print('Tutti gli screenshot sono stati catturati!')
 
 if __name__ == "__main__":
     main()
