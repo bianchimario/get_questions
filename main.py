@@ -21,11 +21,9 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 # Configurazione
 config = {
-    "excel_file": r"C:\Users\mari.bianchi\OneDrive - Reply\Documenti\Tool_Certificazioni\Tool_Certificazioni_streamlit\data\DP-700\database.xlsx",  # Percorso del file Excel (su Windows raw string)
+    "excel_file": r"C:\Users\mari.bianchi\OneDrive - Reply\Documenti\Tool_Certificazioni\Tool_Certificazioni_streamlit\data\DP-700\database.xlsx",  # Percorso del file Excel
     "base_dir": r"C:\Users\mari.bianchi\Downloads\test_data",             # Cartella base in cui organizzare tutto
     "delay_between_screenshots": 2,  # Secondi di attesa tra screenshot
-    "viewport_width": 1200,
-    "viewport_height": 800,
 }
 
 def main():
@@ -66,6 +64,8 @@ def organize_data_by_course(data):
         
         # Estrai il numero del topic dal link o dalla riga
         topic_number = row.get('Topic') if pd.notna(row.get('Topic')) else extract_topic_from_link(link)
+        # Converti il topic_number in intero per evitare nomi di cartelle come "Topic1.0"
+        topic_number = int(topic_number)
         topic_name = f"Topic{topic_number}"
         
         # Assicurati che le strutture esistano
@@ -112,17 +112,6 @@ def create_folder_structure(course_structure):
         # Copia il file Excel nella cartella del corso
         shutil.copy2(config['excel_file'], os.path.join(course_path, 'database.xlsx'))
         
-        # Crea un config.json facoltativo
-        config_data = {
-            "courseId": course_name,
-            "totalTopics": len(course_data['topics']),
-            "totalQuestions": len(course_data['excel_data']),
-            "lastUpdated": pd.Timestamp.now().isoformat()
-        }
-        
-        with open(os.path.join(course_path, 'config.json'), 'w', encoding='utf-8') as f:
-            json.dump(config_data, f, indent=2)
-        
         # Crea la cartella Domande
         os.makedirs(domande_path, exist_ok=True)
         
@@ -137,12 +126,13 @@ def capture_screenshots(course_structure):
     """Cattura gli screenshot"""
     print('Avvio della cattura degli screenshot...')
     
-    # Configura Chrome
+    # Configura Chrome - rimuoviamo la definizione fissa della dimensione della finestra
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument(f"--window-size={config['viewport_width']},{config['viewport_height']}")
+    # Impostiamo una dimensione più ampia per evitare problemi di visualizzazione
+    chrome_options.add_argument("--window-size=1920,1080")
     
     # Inizializza il browser
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
@@ -185,9 +175,21 @@ def capture_screenshots(course_structure):
                             (By.XPATH, '//*[contains(concat( " ", @class, " " ), concat( " ", "discussion-header-container", " " ))]')
                         ))
                         
+                        # Cattura lo screenshot dell'elemento completamente
+                        # Scrolliamo fino all'elemento ma con un offset verso l'alto per evitare che la navbar lo copra
+                        driver.execute_script("arguments[0].scrollIntoView(true);", element)
+                        # Aggiungiamo un ulteriore scroll verso l'alto per evitare che la navbar fissa copra l'elemento
+                        driver.execute_script("window.scrollBy(0, -100);")
+                        
+                        # Assicuriamoci che l'intero elemento sia visibile aspettando un attimo
+                        time.sleep(0.5)
+                        
+                        # Catturiamo le dimensioni reali dell'elemento
+                        size = element.size
+                        
                         # Cattura lo screenshot dell'elemento
                         element.screenshot(screenshot_path)
-                        print(f"Screenshot salvato in: {screenshot_path}")
+                        print(f"Screenshot salvato in: {screenshot_path} con dimensioni {size['width']}x{size['height']}px")
                         
                     except Exception as e:
                         print(f"Errore durante la cattura dello screenshot per {course_name} {topic_name} Domanda {numero}: {e}")
