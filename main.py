@@ -132,7 +132,7 @@ def capture_screenshots(course_structure):
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     # Impostiamo una dimensione più ampia per evitare problemi di visualizzazione
-    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--window-size=3840,2160")  # Risoluzione 4K
     
     # Inizializza il browser
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
