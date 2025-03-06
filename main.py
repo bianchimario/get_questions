@@ -22,7 +22,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 # Configurazione
 config = {
     "excel_file": r"C:\Users\mari.bianchi\OneDrive - Reply\Documenti\Tool_Certificazioni\Tool_Certificazioni_streamlit\data\DP-700\database.xlsx",  # Percorso del file Excel
-    "base_dir": r"C:\Users\mari.bianchi\Downloads\test_data_8k",             # Cartella base in cui organizzare tutto
+    "base_dir": r"C:\Users\mari.bianchi\Downloads\data",   # Cartella base in cui organizzare tutto
     "delay_between_screenshots": 2,  # Secondi di attesa tra screenshot
 }
 
