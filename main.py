@@ -22,7 +22,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 # Configurazione
 config = {
     "excel_file": r"C:\Users\mari.bianchi\OneDrive - Reply\Documenti\Tool_Certificazioni\Tool_Certificazioni_streamlit\data\DP-700\database.xlsx",  # Percorso del file Excel
-    "base_dir": r"C:\Users\mari.bianchi\Downloads\test_data",             # Cartella base in cui organizzare tutto
+    "base_dir": r"C:\Users\mari.bianchi\Downloads\test_data_8k",             # Cartella base in cui organizzare tutto
     "delay_between_screenshots": 2,  # Secondi di attesa tra screenshot
 }
 
@@ -132,7 +132,8 @@ def capture_screenshots(course_structure):
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     # Impostiamo una dimensione più ampia per evitare problemi di visualizzazione
-    chrome_options.add_argument("--window-size=3840,2160")  # Risoluzione 4K
+    #chrome_options.add_argument("--window-size=3840,2160")  # Risoluzione 4K
+    chrome_options.add_argument("--window-size=7680,4320") # Risoluzione 8K
     
     # Inizializza il browser
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
